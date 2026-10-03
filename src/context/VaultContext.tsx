@@ -300,20 +300,43 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }
 
   /**
-   * Change email and password. Both are required.
-   * On success, clears the first_login flag in user metadata.
+   * Change email and password.
+   * Updates password and metadata first, then handles email update.
    */
-  const changeCredentials = async (email: string, password: string): Promise<string | null> => {
-    // Update email first
-    const { error: emailErr } = await supabase.auth.updateUser({ email })
-    if (emailErr) return emailErr.message
-
-    // Update password
-    const { error: passErr } = await supabase.auth.updateUser({ password })
+  const changeCredentials = async (newEmail: string, newPassword: string): Promise<string | null> => {
+    // 1. Update password and metadata FIRST (fast and reliable)
+    const { error: passErr } = await supabase.auth.updateUser({
+      password: newPassword,
+      data: { first_login: false },
+    })
     if (passErr) return passErr.message
 
-    // Mark first login complete
-    await supabase.auth.updateUser({ data: { first_login: false } })
+    // 2. If email is provided and different from current:
+    const trimmedEmail = newEmail.trim()
+    if (trimmedEmail && trimmedEmail.toLowerCase() !== user?.email?.toLowerCase()) {
+      try {
+        const { error: emailErr } = await supabase.auth.updateUser({ email: trimmedEmail })
+        if (emailErr) {
+          const isTimeout = emailErr.message.includes('504') || (emailErr as unknown as Record<string, unknown>).status === 504
+          if (isTimeout) {
+            setIsFirstLogin(false)
+            setIsFirstLoginModalOpen(false)
+            showToast('Passphrase updated! For email changes, disable "Secure email change" in Supabase.')
+            return null
+          }
+          return `Password updated, but email change failed: ${emailErr.message}`
+        }
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e)
+        if (errMsg.includes('504')) {
+          setIsFirstLogin(false)
+          setIsFirstLoginModalOpen(false)
+          showToast('Passphrase updated! For email changes, disable "Secure email change" in Supabase.')
+          return null
+        }
+      }
+    }
+
     setIsFirstLogin(false)
     setIsFirstLoginModalOpen(false)
     showToast('Credentials updated. Check email for confirmation.')
