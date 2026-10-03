@@ -23,36 +23,47 @@ export const SecurityModal: React.FC = () => {
     lockVault,
     settings,
     updateSettings,
-    sessions,
-    revokeSession,
     stats,
     downloadAllVault,
     deleteAllMedia,
     resetVault,
-    showToast,
+    user,
+    updatePassword,
   } = useVault()
 
   const [activeSection, setActiveSection] = useState<
     'account' | 'security' | 'storage' | 'vault'
-  >('security')
+  >('account')
   const [dangerConfirm, setDangerConfirm] = useState<
     'none' | 'deleteAll' | 'deleteVault' | 'password'
   >('none')
   const [newPassword, setNewPassword] = useState('')
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState(false)
 
   if (!isSecurityModalOpen) return null
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newPassword) return
-    setPasswordSuccess(true)
-    setTimeout(() => {
-      setPasswordSuccess(false)
-      setDangerConfirm('none')
-      setNewPassword('')
-      showToast('Vault passphrase updated.')
-    }, 1200)
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordError('Password must be at least 8 characters.')
+      return
+    }
+    setIsUpdatingPassword(true)
+    setPasswordError(null)
+    const err = await updatePassword(newPassword)
+    setIsUpdatingPassword(false)
+    if (err) {
+      setPasswordError(err)
+    } else {
+      setPasswordSuccess(true)
+      setTimeout(() => {
+        setPasswordSuccess(false)
+        setDangerConfirm('none')
+        setNewPassword('')
+      }, 1500)
+    }
   }
 
   return (
@@ -132,7 +143,10 @@ export const SecurityModal: React.FC = () => {
                       Anne
                     </h4>
                     <p className="text-[12px] font-mono text-[#666]">
-                      anne@private.vault · Vault Owner
+                      {user?.email || 'ann@vault.com'} · Vault Owner
+                    </p>
+                    <p className="text-[10px] font-mono text-[#888] mt-0.5">
+                      Account active since {user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Oct 2026'}
                     </p>
                   </div>
                 </div>
@@ -157,22 +171,29 @@ export const SecurityModal: React.FC = () => {
                     <input
                       type="password"
                       value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Minimum 12 characters"
+                      onChange={(e) => { setNewPassword(e.target.value); setPasswordError(null) }}
+                      placeholder="Minimum 8 characters"
                       required
                       className="w-full px-3 py-2 text-[13px] bg-[#FAF8F5] border-2 border-black outline-none font-mono"
                     />
+
+                    {passwordError && (
+                      <div className="text-[11px] font-mono font-bold text-red-600 bg-red-50 p-2 border border-red-200">
+                        {passwordError}
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 pt-1">
                       <button
                         type="submit"
-                        disabled={passwordSuccess}
-                        className="px-4 py-2 bg-[#2563EB] text-white text-[11px] font-mono font-black uppercase tracking-wider border-2 border-black hover:bg-[#1D4ED8] transition cursor-pointer nb-shadow-xs"
+                        disabled={isUpdatingPassword || passwordSuccess}
+                        className="px-4 py-2 bg-[#2563EB] text-white text-[11px] font-mono font-black uppercase tracking-wider border-2 border-black hover:bg-[#1D4ED8] transition cursor-pointer nb-shadow-xs disabled:opacity-60"
                       >
-                        {passwordSuccess ? 'Updating...' : 'Save New Passphrase'}
+                        {isUpdatingPassword ? 'Updating...' : passwordSuccess ? 'Updated!' : 'Save New Passphrase'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDangerConfirm('none')}
+                        onClick={() => { setDangerConfirm('none'); setPasswordError(null); setNewPassword('') }}
                         className="px-3 py-2 text-[11px] font-mono text-[#666] hover:text-black cursor-pointer"
                       >
                         Cancel
@@ -181,14 +202,16 @@ export const SecurityModal: React.FC = () => {
                   </form>
                 ) : (
                   <button
-                    onClick={() => setDangerConfirm('password')}
+                    onClick={() => { setDangerConfirm('password'); setPasswordError(null) }}
                     className="w-full py-3 px-4 bg-white border-2 border-black hover:bg-[#FFFDE7] text-[13px] font-bold text-left flex items-center justify-between text-black transition cursor-pointer nb-shadow-xs"
                   >
                     <span className="flex items-center gap-2">
                       <KeyRound className="w-4 h-4 text-black" />
-                      <span>Change password</span>
+                      <span>Change master password</span>
                     </span>
-                    <span className="text-[11px] font-mono text-[#888]">Updated 30d ago</span>
+                    <span className="text-[11px] font-mono text-[#888]">
+                      Last sign-in: {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Today'}
+                    </span>
                   </button>
                 )}
               </div>
@@ -247,19 +270,21 @@ export const SecurityModal: React.FC = () => {
               {/* Active Sessions */}
               <div>
                 <h5 className="text-[11px] font-mono font-black uppercase tracking-wider text-black mb-2">
-                  Active Verified Sessions
+                  Active Verified Session
                 </h5>
-                <div className="divide-y-2 divide-black border-2 border-black bg-white nb-shadow-xs">
-                  {sessions.map((sess) => {
-                    const isPhone = sess.device.includes('iPhone')
-                    const isTab = sess.device.includes('iPad')
+                <div className="border-2 border-black bg-white nb-shadow-xs">
+                  {(() => {
+                    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+                    const isPhone = /iPhone|Android|Mobile/i.test(ua)
+                    const isTab = /iPad|Tablet/i.test(ua)
+                    const isMac = /Macintosh/i.test(ua)
+                    const isWin = /Windows/i.test(ua)
+                    const deviceName = isPhone ? (/iPhone/i.test(ua) ? 'iPhone' : 'Mobile Device') : isTab ? 'iPad / Tablet' : isMac ? 'Mac' : isWin ? 'Windows PC' : 'Workstation'
+                    const browserName = /Firefox/i.test(ua) ? 'Firefox' : /Edg/i.test(ua) ? 'Microsoft Edge' : /Chrome/i.test(ua) ? 'Chrome' : /Safari/i.test(ua) ? 'Safari' : 'Web Browser'
                     const Icon = isPhone ? Smartphone : isTab ? Tablet : Laptop
 
                     return (
-                      <div
-                        key={sess.id}
-                        className="p-3.5 flex items-center justify-between gap-3 bg-white hover:bg-[#FAF8F5] transition"
-                      >
+                      <div className="p-3.5 flex items-center justify-between gap-3 bg-white">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-8 h-8 border-2 border-black bg-[#FFE600] flex items-center justify-center text-black shrink-0 nb-shadow-xs">
                             <Icon className="w-4 h-4 stroke-[2.5]" />
@@ -267,31 +292,22 @@ export const SecurityModal: React.FC = () => {
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <p className="text-[13px] font-bold text-black truncate">
-                                {sess.device}
+                                {deviceName}
                               </p>
-                              {sess.isCurrent && (
-                                <span className="text-[9px] font-mono font-black uppercase text-white bg-black px-1.5 py-0.2 shrink-0">
-                                  This device
-                                </span>
-                              )}
+                              <span className="text-[9px] font-mono font-black uppercase text-white bg-black px-1.5 py-0.2 shrink-0">
+                                Current Active Session
+                              </span>
                             </div>
                             <p className="text-[11px] font-mono text-[#666]">
-                              {sess.browser} · {sess.lastActive}
+                              {browserName} · Verified via Supabase Auth
                             </p>
                           </div>
                         </div>
 
-                        {!sess.isCurrent && (
-                          <button
-                            onClick={() => revokeSession(sess.id)}
-                            className="text-[10px] font-mono font-black uppercase tracking-wider text-red-600 hover:underline shrink-0 cursor-pointer"
-                          >
-                            Revoke
-                          </button>
-                        )}
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] shrink-0" title="Active now" />
                       </div>
                     )
-                  })}
+                  })()}
                 </div>
               </div>
 
@@ -325,24 +341,33 @@ export const SecurityModal: React.FC = () => {
                     {stats.usedFormatted}
                   </h4>
                   <span className="text-[12px] font-mono font-bold text-[#666]">
-                    of {stats.totalFormatted} total
+                    of {stats.totalFormatted} quota
                   </span>
                 </div>
 
-                {/* Chunky Bar */}
+                {/* Chunky Bar with Real Proportions */}
                 <div className="w-full h-4 bg-[#FAF8F5] border-2 border-black overflow-hidden mb-3 flex">
-                  <div className="h-full bg-[#FF2E93] border-r border-black" style={{ width: '8%' }} />
-                  <div className="h-full bg-[#EF4444] border-r border-black" style={{ width: '22%' }} />
-                  <div className="h-full bg-[#2563EB]" style={{ width: '12%' }} />
+                  {stats.photosPercent > 0 && (
+                    <div className="h-full bg-[#FF2E93] border-r border-black" style={{ width: `${stats.photosPercent}%` }} />
+                  )}
+                  {stats.videosPercent > 0 && (
+                    <div className="h-full bg-[#EF4444] border-r border-black" style={{ width: `${stats.videosPercent}%` }} />
+                  )}
+                  {stats.filesPercent > 0 && (
+                    <div className="h-full bg-[#2563EB]" style={{ width: `${stats.filesPercent}%` }} />
+                  )}
+                  {stats.usedBytes === 0 && (
+                    <div className="h-full w-full bg-[#FAF8F5]" />
+                  )}
                 </div>
 
                 <div className="flex justify-between text-[11px] font-mono text-[#555] font-bold">
                   <span>{stats.percentageUsed}% consumed</span>
-                  <span>47.2 GB remaining</span>
+                  <span>{stats.remainingFormatted} remaining</span>
                 </div>
               </div>
 
-              {/* Storage breakdown */}
+              {/* Storage breakdown with Real Values */}
               <div className="space-y-2">
                 <h5 className="text-[11px] font-mono font-black uppercase tracking-wider text-black">
                   Vault Usage by Format
@@ -353,21 +378,21 @@ export const SecurityModal: React.FC = () => {
                       <span className="w-3 h-3 bg-[#EF4444] border border-black" />
                       <span>Videos ({stats.videosCount})</span>
                     </span>
-                    <span className="font-mono font-bold text-black">2.71 GB</span>
+                    <span className="font-mono font-bold text-black">{stats.videosFormatted}</span>
                   </div>
                   <div className="p-3.5 flex items-center justify-between">
                     <span className="font-black text-black flex items-center gap-2">
                       <span className="w-3 h-3 bg-[#FF2E93] border border-black" />
                       <span>Photos ({stats.photosCount})</span>
                     </span>
-                    <span className="font-mono font-bold text-black">90 MB</span>
+                    <span className="font-mono font-bold text-black">{stats.photosFormatted}</span>
                   </div>
                   <div className="p-3.5 flex items-center justify-between">
                     <span className="font-black text-black flex items-center gap-2">
                       <span className="w-3 h-3 bg-[#2563EB] border border-black" />
                       <span>Files & Docs ({stats.filesCount})</span>
                     </span>
-                    <span className="font-mono font-bold text-black">14.7 GB</span>
+                    <span className="font-mono font-bold text-black">{stats.filesFormatted}</span>
                   </div>
                 </div>
               </div>

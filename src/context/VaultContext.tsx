@@ -23,6 +23,8 @@ interface VaultContextType {
   unlockVault: (email: string, password: string) => Promise<string | null>
   lockVault: () => Promise<void>
   changeCredentials: (email: string, password: string) => Promise<string | null>
+  sendPasswordReset: (email: string) => Promise<string | null>
+  updatePassword: (password: string) => Promise<string | null>
   dismissFirstLogin: () => void
 
   // Media
@@ -60,10 +62,20 @@ interface VaultContextType {
     usedBytes: number
     usedFormatted: string
     totalFormatted: string
+    remainingFormatted: string
     percentageUsed: number
     photosCount: number
     videosCount: number
     filesCount: number
+    photosBytes: number
+    videosBytes: number
+    filesBytes: number
+    photosFormatted: string
+    videosFormatted: string
+    filesFormatted: string
+    photosPercent: number
+    videosPercent: number
+    filesPercent: number
   }
 
   // Toast
@@ -304,7 +316,23 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await supabase.auth.updateUser({ data: { first_login: false } })
     setIsFirstLogin(false)
     setIsFirstLoginModalOpen(false)
-    showToast('Credentials updated. Vault secured.')
+    showToast('Credentials updated. Check email for confirmation.')
+    return null
+  }
+
+  const sendPasswordReset = async (email: string): Promise<string | null> => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    })
+    if (error) return error.message
+    showToast('Reset link sent. Check your inbox.')
+    return null
+  }
+
+  const updatePassword = async (password: string): Promise<string | null> => {
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) return error.message
+    showToast('Master passphrase updated.')
     return null
   }
 
@@ -312,6 +340,31 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Hides the modal for this session only; next login will show again
     setIsFirstLoginModalOpen(false)
   }
+
+  // ── 5-Minute Inactivity Auto-Lock
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => {
+        lockVault()
+        showToast('Session locked after 5 minutes of inactivity.')
+      }, 5 * 60 * 1000)
+    }
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click']
+    events.forEach((ev) => window.addEventListener(ev, resetTimer, { passive: true }))
+
+    resetTimer()
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      events.forEach((ev) => window.removeEventListener(ev, resetTimer))
+    }
+  }, [isAuthenticated, showToast])
 
   // ── Navigation
 
@@ -497,11 +550,21 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem('vault_color', color)
   }
 
-  // ── Stats
+  // ── Real Storage Breakdown Stats
+  const photosItems = mediaItems.filter((m) => m.type === 'image')
+  const videosItems = mediaItems.filter((m) => m.type === 'video')
+  const filesItems  = mediaItems.filter((m) => m.type === 'file')
 
-  const usedBytes = mediaItems.reduce((acc, m) => acc + (m.rawBytes || 0), 0)
-  const totalBytes = 50 * 1024 * 1024 * 1024
+  const photosBytes = photosItems.reduce((acc, m) => acc + (m.rawBytes || 0), 0)
+  const videosBytes = videosItems.reduce((acc, m) => acc + (m.rawBytes || 0), 0)
+  const filesBytes  = filesItems.reduce((acc, m) => acc + (m.rawBytes || 0), 0)
+  const usedBytes   = photosBytes + videosBytes + filesBytes
+  const totalBytes  = 50 * 1024 * 1024 * 1024 // 50 GB quota
   const percentageUsed = Math.min(100, Math.round((usedBytes / totalBytes) * 100))
+
+  const photosPercent = totalBytes > 0 ? Math.min(100, Math.max(usedBytes > 0 ? 1 : 0, Math.round((photosBytes / totalBytes) * 100))) : 0
+  const videosPercent = totalBytes > 0 ? Math.min(100, Math.max(usedBytes > 0 ? 1 : 0, Math.round((videosBytes / totalBytes) * 100))) : 0
+  const filesPercent  = totalBytes > 0 ? Math.min(100, Math.max(usedBytes > 0 ? 1 : 0, Math.round((filesBytes / totalBytes) * 100))) : 0
 
   return (
     <VaultContext.Provider
@@ -513,6 +576,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         unlockVault,
         lockVault,
         changeCredentials,
+        sendPasswordReset,
+        updatePassword,
         dismissFirstLogin,
         mediaItems,
         isMediaLoading,
@@ -540,10 +605,20 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           usedBytes,
           usedFormatted: formatBytes(usedBytes),
           totalFormatted: '50 GB',
+          remainingFormatted: formatBytes(Math.max(0, totalBytes - usedBytes)),
           percentageUsed,
-          photosCount: mediaItems.filter((m) => m.type === 'image').length,
-          videosCount: mediaItems.filter((m) => m.type === 'video').length,
-          filesCount:  mediaItems.filter((m) => m.type === 'file').length,
+          photosCount: photosItems.length,
+          videosCount: videosItems.length,
+          filesCount:  filesItems.length,
+          photosBytes,
+          videosBytes,
+          filesBytes,
+          photosFormatted: formatBytes(photosBytes),
+          videosFormatted: formatBytes(videosBytes),
+          filesFormatted:  formatBytes(filesBytes),
+          photosPercent,
+          videosPercent,
+          filesPercent,
         },
         toastMessage,
         showToast,
