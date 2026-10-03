@@ -19,8 +19,8 @@ export const FirstTimeSetupModal: React.FC = () => {
     e.preventDefault()
     setError(null)
 
-    if (!email || !password) {
-      setError('Both email and password are required.')
+    if (!password) {
+      setError('New password is required.')
       return
     }
     if (password.length < 8) {
@@ -29,10 +29,6 @@ export const FirstTimeSetupModal: React.FC = () => {
     }
     if (password !== confirmPassword) {
       setError('Passwords do not match.')
-      return
-    }
-    if (email.toLowerCase() === 'ann@vault.com') {
-      setError('Please use a different email address.')
       return
     }
 
@@ -193,8 +189,17 @@ export const FirstTimeSetupModal: React.FC = () => {
 
               {/* Error */}
               {error && (
-                <div className="bg-[#EF4444] text-white font-mono text-[11px] font-bold px-3 py-2 border-2 border-black">
-                  {error}
+                <div className="bg-[#EF4444] text-white font-mono text-[11px] font-bold p-3 border-2 border-black space-y-2">
+                  <div>{error}</div>
+                  {error.toLowerCase().includes('sign in') && (
+                    <button
+                      type="button"
+                      onClick={dismissFirstLogin}
+                      className="px-3 py-1 bg-black text-white text-[10px] uppercase tracking-wider border border-white hover:bg-neutral-800 cursor-pointer block mt-1"
+                    >
+                      &larr; Sign In Again
+                    </button>
+                  )}
                 </div>
               )}
 

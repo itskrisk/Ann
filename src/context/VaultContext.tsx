@@ -286,8 +286,11 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // ── Auth actions
 
   const unlockVault = async (email: string, password: string): Promise<string | null> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) return error.message
+    if (data?.session) {
+      handleSessionChange(data.session)
+    }
     return null
   }
 
@@ -304,16 +307,27 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
    * Updates password and metadata first, then handles email update.
    */
   const changeCredentials = async (newEmail: string, newPassword: string): Promise<string | null> => {
+    // 0. Verify active session exists
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData?.session) {
+      return 'Session expired. Please sign in again, then update your credentials.'
+    }
+
     // 1. Update password and metadata FIRST (fast and reliable)
     const { error: passErr } = await supabase.auth.updateUser({
       password: newPassword,
       data: { first_login: false },
     })
-    if (passErr) return passErr.message
+    if (passErr) {
+      if (passErr.message.toLowerCase().includes('session missing')) {
+        return 'Session expired. Please sign in again, then update your credentials.'
+      }
+      return passErr.message
+    }
 
     // 2. If email is provided and different from current:
     const trimmedEmail = newEmail.trim()
-    if (trimmedEmail && trimmedEmail.toLowerCase() !== user?.email?.toLowerCase()) {
+    if (trimmedEmail && trimmedEmail.toLowerCase() !== sessionData.session.user.email?.toLowerCase()) {
       try {
         const { error: emailErr } = await supabase.auth.updateUser({ email: trimmedEmail })
         if (emailErr) {
@@ -366,13 +380,14 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // ── 5-Minute Inactivity Auto-Lock
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated || isFirstLoginModalOpen) return
 
     let timeoutId: ReturnType<typeof setTimeout>
 
     const resetTimer = () => {
       if (timeoutId) clearTimeout(timeoutId)
       timeoutId = setTimeout(() => {
+        if (isFirstLoginModalOpen) return
         lockVault()
         showToast('Session locked after 5 minutes of inactivity.')
       }, 5 * 60 * 1000)
@@ -387,7 +402,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (timeoutId) clearTimeout(timeoutId)
       events.forEach((ev) => window.removeEventListener(ev, resetTimer))
     }
-  }, [isAuthenticated, showToast])
+  }, [isAuthenticated, isFirstLoginModalOpen, showToast])
 
   // ── Navigation
 

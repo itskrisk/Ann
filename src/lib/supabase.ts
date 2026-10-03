@@ -6,7 +6,14 @@ const DEFAULT_KEY = 'sb_publishable_f3qrJkgVJ271VLoMzhjvXw_ziI61va9'
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || DEFAULT_URL) as string
 const supabaseKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_KEY) as string
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+})
 
 export const isSupabaseConfigured = true
 
