@@ -38,6 +38,7 @@ export const SecurityModal: React.FC = () => {
     'none' | 'deleteAll' | 'deleteVault' | 'password'
   >('none')
   const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState(false)
@@ -48,6 +49,10 @@ export const SecurityModal: React.FC = () => {
     e.preventDefault()
     if (!newPassword || newPassword.length < 8) {
       setPasswordError('Password must be at least 8 characters.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match. Please re-enter.')
       return
     }
     setIsUpdatingPassword(true)
@@ -62,7 +67,8 @@ export const SecurityModal: React.FC = () => {
         setPasswordSuccess(false)
         setDangerConfirm('none')
         setNewPassword('')
-      }, 1500)
+        setConfirmPassword('')
+      }, 2500)
     }
   }
 
@@ -177,9 +183,27 @@ export const SecurityModal: React.FC = () => {
                       className="w-full px-3 py-2 text-[13px] bg-[#FAF8F5] border-2 border-black outline-none font-mono"
                     />
 
+                    <label className="block text-[11px] font-mono text-[#666]">
+                      Confirm new passphrase:
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(null) }}
+                      placeholder="Re-enter new passphrase"
+                      required
+                      className="w-full px-3 py-2 text-[13px] bg-[#FAF8F5] border-2 border-black outline-none font-mono"
+                    />
+
                     {passwordError && (
                       <div className="text-[11px] font-mono font-bold text-red-600 bg-red-50 p-2 border border-red-200">
                         {passwordError}
+                      </div>
+                    )}
+
+                    {passwordSuccess && (
+                      <div className="text-[11px] font-mono font-bold text-green-700 bg-green-50 p-2 border border-green-200">
+                        ✓ Passphrase updated! Use your new password on next sign-in.
                       </div>
                     )}
 
@@ -189,11 +213,11 @@ export const SecurityModal: React.FC = () => {
                         disabled={isUpdatingPassword || passwordSuccess}
                         className="px-4 py-2 bg-[#2563EB] text-white text-[11px] font-mono font-black uppercase tracking-wider border-2 border-black hover:bg-[#1D4ED8] transition cursor-pointer nb-shadow-xs disabled:opacity-60"
                       >
-                        {isUpdatingPassword ? 'Updating...' : passwordSuccess ? 'Updated!' : 'Save New Passphrase'}
+                        {isUpdatingPassword ? 'Updating...' : passwordSuccess ? '✓ Updated!' : 'Save New Passphrase'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setDangerConfirm('none'); setPasswordError(null); setNewPassword('') }}
+                        onClick={() => { setDangerConfirm('none'); setPasswordError(null); setNewPassword(''); setConfirmPassword('') }}
                         className="px-3 py-2 text-[11px] font-mono text-[#666] hover:text-black cursor-pointer"
                       >
                         Cancel

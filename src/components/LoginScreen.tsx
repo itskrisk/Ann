@@ -16,8 +16,17 @@ export const LoginScreen: React.FC = () => {
   const [errorMsg, setErrorMsg]         = useState<string | null>(null)
   const [successMsg, setSuccessMsg]     = useState<string | null>(null)
 
-  // Listen for Supabase password recovery link click
+  // Listen for Supabase password recovery link click or URL hash/params
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || ''
+      const search = window.location.search || ''
+      if (hash.includes('type=recovery') || search.includes('type=recovery')) {
+        setMode('reset')
+        setErrorMsg(null)
+      }
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setMode('reset')

@@ -181,8 +181,37 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isMediaLoading, setIsMediaLoading] = useState(false)
   const [selectedMedia, setSelectedMedia]   = useState<MediaItem | null>(null)
 
+  // ── Browser URL Routing sync
+  const getInitialTab = (): VaultTab => {
+    if (typeof window === 'undefined') return 'home'
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase()
+    if (path === 'photos' || path === 'videos' || path === 'files') {
+      return path
+    }
+    return 'home'
+  }
+
   // ── UI state
-  const [activeTab, setActiveTab]               = useState<VaultTab>('home')
+  const [activeTab, setActiveTabState] = useState<VaultTab>(getInitialTab)
+
+  const setActiveTab = useCallback((tab: VaultTab) => {
+    setActiveTabState(tab)
+    if (typeof window !== 'undefined') {
+      const targetPath = tab === 'home' ? '/' : `/${tab}`
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, '', targetPath)
+      }
+    }
+  }, [])
+
+  // Listen to browser Back / Forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTabState(getInitialTab())
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
   const [isUploadModalOpen, setIsUploadModalOpen]   = useState(false)
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
   const [uploadProgress, setUploadProgress]     = useState<UploadProgressState | null>(null)
@@ -367,9 +396,18 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }
 
   const updatePassword = async (password: string): Promise<string | null> => {
+    // Force-load the session into SDK memory before calling updateUser
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession()
+    if (sessionErr || !session) {
+      // Try refreshing the session from localStorage
+      const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession()
+      if (refreshErr || !refreshed.session) {
+        return 'Session expired. Please lock and sign in again.'
+      }
+    }
     const { error } = await supabase.auth.updateUser({ password })
     if (error) return error.message
-    showToast('Master passphrase updated.')
+    showToast('Master passphrase updated! Please use your new password next time you sign in.')
     return null
   }
 
