@@ -13,8 +13,8 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const SUPABASE_URL = 'https://gbsypzkisfetdsrtkcvk.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_f3qrJkgVJ271VLoMzhjvXw_ziI61va9'
+const SUPABASE_URL = 'https://viiruwsotafgyicgtqxo.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_mK2aWox8Of82x_B1mYxyEw_zEHvdveS'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
